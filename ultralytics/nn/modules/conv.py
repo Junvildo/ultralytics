@@ -23,6 +23,7 @@ __all__ = (
     "CBAM",
     "Concat",
     "RepConv",
+    "CoordinateAttention",
     "Index",
 )
 
@@ -650,6 +651,86 @@ class CBAM(nn.Module):
             (torch.Tensor): Attended output tensor.
         """
         return self.spatial_attention(self.channel_attention(x))
+
+
+class CoordinateAttention(nn.Module):
+    """
+    Coordinate Attention module for efficient feature representation.
+
+    This attention mechanism captures long-range dependencies in both horizontal and vertical directions
+    by factorizing the attention into two 1D feature representations.
+
+    Attributes:
+        pool_h (nn.AdaptiveAvgPool2d): Horizontal pooling layer.
+        pool_w (nn.AdaptiveAvgPool2d): Vertical pooling layer.
+        conv1 (nn.Conv2d): First convolution layer for dimension reduction.
+        bn1 (nn.BatchNorm2d): Batch normalization for first convolution.
+        act (nn.Module): Activation function.
+        conv_h (nn.Conv2d): Horizontal convolution layer.
+        conv_w (nn.Conv2d): Vertical convolution layer.
+        bn_h (nn.BatchNorm2d): Batch normalization for horizontal convolution.
+        bn_w (nn.BatchNorm2d): Batch normalization for vertical convolution.
+        default_act (nn.Module): Default activation function (SiLU).
+
+    References:
+        https://github.com/houqb/CoordAttention
+    """
+
+    default_act = nn.SiLU()  # default activation
+
+    def __init__(self, c1, c2, reduction=32, act=True):
+        """
+        Initialize Coordinate Attention module with given parameters.
+
+        Args:
+            c1 (int): Number of input channels.
+            c2 (int): Number of output channels.
+            reduction (int): Channel reduction factor.
+            act (bool | nn.Module): Activation function.
+        """
+        super().__init__()
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+
+        mip = max(8, c1 // reduction)
+
+        self.conv1 = nn.Conv2d(c1, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.act = self.default_act if act is True else act if isinstance(act, nn.Module) else nn.Identity()
+
+        self.conv_h = nn.Conv2d(mip, c2, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mip, c2, kernel_size=1, stride=1, padding=0)
+        self.bn_h = nn.BatchNorm2d(c2)
+        self.bn_w = nn.BatchNorm2d(c2)
+
+    def forward(self, x):
+        """
+        Apply coordinate attention to input tensor.
+
+        Args:
+            x (torch.Tensor): Input tensor of shape (B, C, H, W).
+
+        Returns:
+            (torch.Tensor): Output tensor with attention applied.
+        """
+        identity = x
+
+        n, c, h, w = x.size()
+        x_h = self.pool_h(x)
+        x_w = self.pool_w(x).permute(0, 1, 3, 2)
+
+        y = torch.cat([x_h, x_w], dim=2)
+        y = self.act(self.bn1(self.conv1(y)))
+
+        x_h, x_w = torch.split(y, [h, w], dim=2)
+        x_w = x_w.permute(0, 1, 3, 2)
+
+        a_h = self.bn_h(self.conv_h(x_h)).sigmoid()
+        a_w = self.bn_w(self.conv_w(x_w)).sigmoid()
+
+        out = identity * a_w * a_h
+
+        return out
 
 
 class Concat(nn.Module):
