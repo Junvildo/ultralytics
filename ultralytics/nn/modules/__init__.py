@@ -89,7 +89,6 @@ from .head import (
     YOLOEDetect,
     YOLOESegment,
     v10Detect,
-    P2Segment,
 )
 from .transformer import (
     AIFI,
