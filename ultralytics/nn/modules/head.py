@@ -261,40 +261,6 @@ class Segment(Detect):
             return x, mc, p
         return (torch.cat([x, mc], 1), p) if self.export else (torch.cat([x[0], mc], 1), (x[1], mc, p))
 
-class P2Segment(Detect):
-    def __init__(self, nc: int = 80, nm: int = 32, npr: int = 256, ch: tuple = ()):
-        super().__init__(nc, ch)
-        self.nm = nm  # number of masks
-        self.npr = npr  # number of protos
-        self.proto = Proto(ch[0], self.npr, self.nm)  # use P2 (highest res) for prototypes
-
-        # Optional: per-level c4 (recommended for balance)
-        self.cv4 = nn.ModuleList(
-            nn.Sequential(
-                Conv(x, max(x // 4, self.nm), 3),
-                Conv(max(x // 4, self.nm), max(x // 4, self.nm), 3),
-                nn.Conv2d(max(x // 4, self.nm), self.nm, 1)
-            ) for x in ch
-        )
-
-        # Ensure correct number of detection heads
-        self.nl = len(ch)  # should already be set by Detect, but safe to reassign
-
-        # ⚠️ Critical: Set correct strides for 4-level FPN
-        # This may be overridden during model export or in Detect.forward,
-        # but if you get box scaling issues, set explicitly:
-        # self.stride = torch.tensor([4, 8, 16, 32], dtype=torch.float32)
-
-    def forward(self, x):
-        p = self.proto(x[0])  # use highest-res feature (P2)
-        bs = p.shape[0]
-
-        mc = torch.cat([self.cv4[i](x[i]).view(bs, self.nm, -1) for i in range(self.nl)], dim=2)
-        x = Detect.forward(self, x)
-
-        if self.training:
-            return x, mc, p
-        return (torch.cat([x, mc], 1), p) if self.export else (torch.cat([x[0], mc], 1), (x[1], mc, p))
 
 class OBB(Detect):
     """YOLO OBB detection head for detection with rotation models.
