@@ -51,39 +51,34 @@ class VarifocalLoss(nn.Module):
 
 
 class FocalLoss(nn.Module):
-    """
-    Wraps focal loss around existing loss_fcn(), i.e. criteria = FocalLoss(nn.BCEWithLogitsLoss(), gamma=1.5).
-
-    Implements the Focal Loss function for addressing class imbalance by down-weighting easy examples and focusing
-    on hard negatives during training.
-
-    Attributes:
-        gamma (float): The focusing parameter that controls how much the loss focuses on hard-to-classify examples.
-        alpha (torch.Tensor): The balancing factor used to address class imbalance.
-    """
-
-    def __init__(self, gamma: float = 1.5, alpha: float = 0.25):
-        """Initialize FocalLoss class with focusing and balancing parameters."""
+    def __init__(self, alpha=0.25, gamma=2.0, reduction="none"):
         super().__init__()
+        self.alpha = alpha
         self.gamma = gamma
-        self.alpha = torch.tensor(alpha)
+        self.reduction = reduction
+        self.bce = nn.BCEWithLogitsLoss(reduction="none")
 
-    def forward(self, pred: torch.Tensor, label: torch.Tensor) -> torch.Tensor:
-        """Calculate focal loss with modulating factors for class imbalance."""
-        loss = F.binary_cross_entropy_with_logits(pred, label, reduction="none")
-        # p_t = torch.exp(-loss)
-        # loss *= self.alpha * (1.000001 - p_t) ** self.gamma  # non-zero power for gradient stability
+    def forward(self, pred, target):
+        # base BCE loss per element
+        bce_loss = self.bce(pred, target)
+        pred_prob = torch.sigmoid(pred)
 
-        # TF implementation https://github.com/tensorflow/addons/blob/v0.7.1/tensorflow_addons/losses/focal_loss.py
-        pred_prob = pred.sigmoid()  # prob from logits
-        p_t = label * pred_prob + (1 - label) * (1 - pred_prob)
-        modulating_factor = (1.0 - p_t) ** self.gamma
-        loss *= modulating_factor
-        if (self.alpha > 0).any():
-            self.alpha = self.alpha.to(device=pred.device, dtype=pred.dtype)
-            alpha_factor = label * self.alpha + (1 - label) * (1 - self.alpha)
-            loss *= alpha_factor
-        return loss.mean(1).sum()
+        # compute pt (prob of true class)
+        p_t = target * pred_prob + (1 - target) * (1 - pred_prob)
+
+        # modulating factor
+        focal_factor = (1 - p_t) ** self.gamma
+        loss = focal_factor * bce_loss
+
+        # alpha balancing
+        if self.alpha is not None:
+            alpha_factor = target * self.alpha + (1 - target) * (1 - self.alpha)
+            loss = alpha_factor * loss
+
+        return loss if self.reduction == "none" else (
+            loss.mean() if self.reduction == "mean" else loss.sum()
+        )
+
 
 
 class DFLoss(nn.Module):
@@ -203,7 +198,7 @@ class v8DetectionLoss:
 
         m = model.model[-1]  # Detect() module
         # self.bce = nn.BCEWithLogitsLoss(reduction="none")
-        self.bce = FocalLoss()
+        self.bce = FocalLoss(alpha=0.25, gamma=2.0, reduction="none")
         self.hyp = h
         self.stride = m.stride  # model strides
         self.nc = m.nc  # number of classes
@@ -285,7 +280,7 @@ class v8DetectionLoss:
         # Cls loss
         # loss[1] = self.varifocal_loss(pred_scores, target_scores, target_labels) / target_scores_sum  # VFL way
         # loss[1] = self.bce(pred_scores, target_scores.to(dtype)).sum() / target_scores_sum  # BCE
-        loss[1] = self.bce(pred_scores, target_scores.to(dtype))
+        loss[1] = self.bce(pred_scores, target_scores.to(dtype)).sum() / target_scores_sum
 
         # Bbox loss
         if fg_mask.sum():
