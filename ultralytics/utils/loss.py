@@ -50,18 +50,7 @@ class VarifocalLoss(nn.Module):
 
 
 class FocalLoss(nn.Module):
-    """Wraps focal loss around existing loss_fcn(), i.e. criteria = FocalLoss(nn.BCEWithLogitsLoss(), gamma=1.5).
-
-    Implements the Focal Loss function for addressing class imbalance by down-weighting easy examples and focusing on
-    hard negatives during training.
-
-    Attributes:
-        gamma (float): The focusing parameter that controls how much the loss focuses on hard-to-classify examples.
-        alpha (torch.Tensor): The balancing factor used to address class imbalance.
-    """
-
-    def __init__(self, gamma: float = 1.5, alpha: float = 0.25):
-        """Initialize FocalLoss class with focusing and balancing parameters."""
+    def __init__(self, alpha=0.25, gamma=2.0, reduction="none"):
         super().__init__()
         self.alpha = alpha
         self.gamma = gamma
