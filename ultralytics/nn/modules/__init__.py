@@ -105,7 +105,6 @@ from .transformer import (
 )
 
 __all__ = (
-<<<<<<< HEAD
     "Conv",
     "Conv2",
     "LightConv",
@@ -129,7 +128,6 @@ __all__ = (
     "HGStem",
     "SPP",
     "SPPF",
-=======
     "AIFI",
     "Conv",
     "Conv2",
