@@ -639,7 +639,6 @@ class CoordinateAttention(nn.Module):
         self.bn_w = nn.BatchNorm2d(c2)
 
     def forward(self, x):
-<<<<<<< HEAD
         identity = x
         n, c, h, w = x.size()
 
@@ -649,7 +648,6 @@ class CoordinateAttention(nn.Module):
         x_w = x_w.permute(0, 1, 3, 2)                  # (B, C, W, 1)
 
         y = torch.cat([x_h, x_w], dim=2)               # (B, C, H + W, 1)
-=======
         """
         Apply coordinate attention to input tensor.
 
