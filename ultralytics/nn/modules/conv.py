@@ -674,12 +674,7 @@ class CoordinateAttention(nn.Module):
         a_h = self.bn_h(self.conv_h(x_h)).sigmoid()
         a_w = self.bn_w(self.conv_w(x_w)).sigmoid()
 
-<<<<<<< HEAD
-        out = identity * a_h * a_w
-=======
         out = identity * a_w * a_h
-
->>>>>>> e28a33bd (add CoordinateAttention Conv Layer)
         return out
 
 
